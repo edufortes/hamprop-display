@@ -1,0 +1,48 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - uses: actions/cache@v4
+        with:
+          path: ~/.platformio
+          key: pio-${{ hashFiles('platformio.ini') }}
+
+      - name: Install tools
+        run: pip install platformio esptool==5.1.0 pyyaml littlefs-python fatfs-ng intelhex
+
+      - name: Build and merge image
+        run: |
+          VERSION="${GITHUB_REF_NAME:-dev}"
+          scripts/merge-firmware.sh "release/hamprop-${VERSION}.bin"
+          cd release && sha256sum "hamprop-${VERSION}.bin" > "hamprop-${VERSION}.bin.sha256"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: hamprop-firmware
+          path: release/*
+
+      - name: Publish release
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" release/* \
+            --title "HamProp Display $GITHUB_REF_NAME" \
+            --generate-notes \
+            --notes "Flash \`hamprop-$GITHUB_REF_NAME.bin\` at offset 0x0 with esptool-js (Chrome or Edge), then join the \`HamProp-Setup\` Wi-Fi to configure Wi-Fi and your grid locator."
