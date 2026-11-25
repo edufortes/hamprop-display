@@ -8,9 +8,17 @@ cd "$(dirname "$0")/.."
 OUT="${1:-release/hamprop-merged.bin}"
 ENV_NAME=supermini
 BUILD=".pio/build/$ENV_NAME"
-BOOT_APP0="$(ls "$HOME"/.platformio/packages/framework-arduinoespressif32/tools/partitions/boot_app0.bin)"
+CORE_DIR="${PLATFORMIO_CORE_DIR:-$HOME/.platformio}"
 
 [ -n "${NO_BUILD:-}" ] || pio run -e "$ENV_NAME"
+
+# The framework package location varies between PlatformIO setups, so search for it.
+BOOT_APP0="$(find "$CORE_DIR" -name boot_app0.bin -path '*partitions*' 2>/dev/null | head -n1)"
+if [ -z "$BOOT_APP0" ]; then
+  echo "boot_app0.bin not found under $CORE_DIR" >&2
+  ls -la "$CORE_DIR/packages" >&2 || true
+  exit 1
+fi
 
 mkdir -p "$(dirname "$OUT")"
 python -m esptool --chip esp32c3 merge_bin -o "$OUT" \
