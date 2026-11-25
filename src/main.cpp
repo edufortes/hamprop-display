@@ -340,15 +340,10 @@ void drawReport(const Report &r) {
   snprintf(buf, sizeof buf, "SFI %.0f  K%d", r.sfi, r.kIndex);
   tft.drawString(buf, cx, 172);
 
-  time_t now = time(nullptr);
-  int ageMin = r.sondeTime ? (now - r.sondeTime) / 60 : -1;
-  tft.setTextColor(fetchFailed ? TFT_RED : 0x8410);
-  snprintf(buf, sizeof buf, fetchFailed ? "stale %dm" : "%d sondes %dm", r.sondeCount, ageMin);
-  if (fetchFailed)
-    snprintf(buf, sizeof buf, "stale, retrying");
-  else
-    snprintf(buf, sizeof buf, "%d sondes, %dm old", r.sondeCount, ageMin);
-  tft.drawString(buf, cx, 190);
+  if (fetchFailed) {
+    tft.setTextColor(TFT_RED);
+    tft.drawString("stale", cx, 190);
+  }
 }
 
 const char *stateName(State st) {
