@@ -10,7 +10,7 @@ Tap the BOOT button to cycle through the pages:
 
 | Page | Content |
 |---|---|
-| 1 | Band ring (80, 40, 30, 20, 17, 15, 12, 10 m) coloured open / marginal / closed, with MUF, LUF, SFI and K in the middle |
+| 1 | Band ring (80, 40, 30, 20, 17, 15, 12, 10 m) coloured open / marginal / closed, with MUF, LUF, foF2, SFI and K in the middle |
 | 2 | Solar details: SFI, A and K index, sunspot number, solar wind, X-ray class |
 | 3 | The ionosondes nearest to you: distance, MUF(3000) and foF2 |
 | 4 | Band table with frequency and status |
@@ -20,7 +20,8 @@ Hold BOOT for 3 seconds to wipe Wi-Fi and locator and return to setup mode.
 
 ## How the numbers are made
 
-- **MUF and foF2**: real measurements. The firmware fetches the current ionosonde readings from
+- **MUF and foF2**: real measurements. foF2 is the highest frequency that is still reflected when sent straight
+  up, which is the limit for steep-angle (NVIS) paths. Frequencies above it will skip over nearby stations. The firmware fetches the current ionosonde readings from
   [KC2G](https://prop.kc2g.com/) (which aggregates GIRO data), keeps the stations within 1500 km of your locator
   and averages them, weighted by distance. Readings older than 3 hours are ignored.
 - **SFI, A, K, sunspots, solar wind, X-ray**: from [HamQSL](https://www.hamqsl.com/solar.html) (N0NBH).

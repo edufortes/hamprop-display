@@ -325,11 +325,15 @@ void drawReport(const Report &r) {
   tft.drawString(buf, cx, 92);
   tft.setFont(&fonts::Font2);
   tft.setTextColor(0x8410);
-  tft.drawString("LUF~", cx, 124);
+  tft.drawString("LUF~", cx - 34, 124);
+  tft.drawString("foF2", cx + 34, 124);
   tft.setFont(&fonts::Font4);
   tft.setTextColor(TFT_ORANGE);
   snprintf(buf, sizeof buf, "%.1f", r.luf);
-  tft.drawString(buf, cx, 146);
+  tft.drawString(buf, cx - 34, 146);
+  tft.setTextColor(TFT_GREEN);
+  snprintf(buf, sizeof buf, "%.1f", r.fof2);
+  tft.drawString(buf, cx + 34, 146);
 
   tft.setFont(&fonts::Font2);
   tft.setTextColor(TFT_WHITE);
