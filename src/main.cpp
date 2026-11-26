@@ -44,6 +44,11 @@ struct Report {
   char xray[8] = "";
   Sonde sondes[kMaxSondes] = {};
   int sondeListCount = 0;
+  bool esOpen2 = false, esOpen4 = false, esOpen6 = false, auroraOpen = false;
+  bool tropoValid = false;
+  float dN = 0;  // refractivity gradient, N-units per km
+  State tropo = State::Closed;
+  State vhf[3] = {};  // 6 m, 4 m, 2 m
   time_t sondeTime = 0;
   State bands[kBandCount] = {};
 };
@@ -86,7 +91,8 @@ void applyLocator(const char *loc) {
 uint32_t nextFetch = 0;
 int page = 0;
 uint32_t lastPageChange = 0;
-constexpr int kPageCount = 5;
+constexpr int kPageCount = 6;
+constexpr int kHamsterPage = 5;
 uint32_t hamsterFrame = 0;
 uint32_t lastHamsterMs = 0;
 lgfx::LGFX_Sprite hamsterSprite(&tft);
@@ -239,6 +245,58 @@ bool xmlValue(const String &xml, const char *tag, float &out) {
   return true;
 }
 
+bool phenomenonOpen(const String &xml, const char *name, const char *loc) {
+  String key = String("name=\"") + name + "\" location=\"" + loc + "\">";
+  int a = xml.indexOf(key);
+  if (a < 0) return false;
+  a += key.length();
+  int b = xml.indexOf('<', a);
+  return b > a && xml.substring(a, b).indexOf("Closed") < 0;
+}
+
+float refractivity(float tC, float rh, float hPa) {
+  float t = tC + 273.15f;
+  float es = 6.112f * expf(17.62f * tC / (243.12f + tC));
+  float e = es * rh / 100.0f;
+  return 77.6f / t * (hPa + 4810.0f * e / t);
+}
+
+// Tropo ducting hint: how fast refractivity drops between the ground and 850 hPa.
+bool fetchTropo(Report &r) {
+  char url[360];
+  snprintf(url, sizeof url, kTropoUrlFmt, gLat, gLon);
+  WiFiClientSecure client;
+  client.setInsecure();
+  HTTPClient http;
+  http.setTimeout(10000);
+  http.setUserAgent("esp32-hamprop/1.0");
+  if (!http.begin(client, url)) return false;
+  int code = http.GET();
+  if (code != 200) {
+    Serial.printf("tropo HTTP %d\n", code);
+    http.end();
+    return false;
+  }
+  String body = http.getString();
+  http.end();
+  JsonDocument doc;
+  if (deserializeJson(doc, body)) return false;
+  JsonObject cur = doc["current"];
+  JsonObject hr = doc["hourly"];
+  if (cur["temperature_2m"].isNull() || hr["temperature_850hPa"][0].isNull() ||
+      hr["geopotential_height_850hPa"][0].isNull())
+    return false;
+  float n0 = refractivity(cur["temperature_2m"], cur["relative_humidity_2m"] | 50.0f,
+                          cur["surface_pressure"] | 1013.0f);
+  float n1 = refractivity(hr["temperature_850hPa"][0], hr["relative_humidity_850hPa"][0] | 50.0f,
+                          850.0f);
+  float dh = ((hr["geopotential_height_850hPa"][0].as<float>()) - (doc["elevation"] | 0.0f)) / 1000.0f;
+  if (dh < 0.5f) return false;
+  r.dN = (n1 - n0) / dh;
+  r.tropoValid = true;
+  return true;
+}
+
 bool fetchSolar(Report &r) {
   WiFiClientSecure client;
   client.setInsecure();
@@ -268,6 +326,10 @@ bool fetchSolar(Report &r) {
     int xb = xml.indexOf('<', xa);
     if (xb > xa) strlcpy(r.xray, xml.substring(xa, xb).c_str(), sizeof r.xray);
   }
+  r.esOpen2 = phenomenonOpen(xml, "E-Skip", "europe");
+  r.esOpen4 = phenomenonOpen(xml, "E-Skip", "europe_4m");
+  r.esOpen6 = phenomenonOpen(xml, "E-Skip", "europe_6m");
+  r.auroraOpen = phenomenonOpen(xml, "vhf-aurora", "northern_hemi");
   return true;
 }
 
@@ -285,6 +347,17 @@ void classify(Report &r) {
       s = State::Open;
     r.bands[i] = s;
   }
+  r.tropo = !r.tropoValid ? State::Closed
+            : r.dN < -157.0f ? State::Open
+            : r.dN < -100.0f ? State::Marginal
+                             : State::Closed;
+  r.vhf[0] = (r.muf >= 50.0f || r.esOpen6) ? State::Open
+             : r.muf >= 42.0f              ? State::Marginal
+                                           : State::Closed;
+  r.vhf[1] = (r.muf >= 70.0f || r.esOpen4) ? State::Open : State::Closed;
+  r.vhf[2] = (r.esOpen2 || r.auroraOpen || r.tropo == State::Open) ? State::Open
+             : r.tropo == State::Marginal                          ? State::Marginal
+                                                                   : State::Closed;
   r.valid = true;
 }
 
@@ -372,7 +445,7 @@ void drawTitle(const char *t, int idx) {
 }
 
 void drawSolarPage(const Report &r) {
-  drawTitle("Solar", 1);
+  drawTitle("Solar", 2);
   char buf[32];
   tft.setFont(&fonts::Font4);
   tft.setTextColor(TFT_WHITE);
@@ -389,7 +462,7 @@ void drawSolarPage(const Report &r) {
 }
 
 void drawSondePage(const Report &r) {
-  drawTitle("Ionosondes", 2);
+  drawTitle("Ionosondes", 3);
   char buf[40];
   tft.setFont(&fonts::Font2);
   tft.setTextColor(0x8410);
@@ -403,7 +476,7 @@ void drawSondePage(const Report &r) {
 }
 
 void drawBandPage(const Report &r) {
-  drawTitle("Bands", 3);
+  drawTitle("Bands", 4);
   char buf[40];
   tft.setFont(&fonts::Font2);
   for (int i = 0; i < kBandCount; i++) {
@@ -434,14 +507,54 @@ void drawHamsterPage() {
   drawHamsterFrame();
 }
 
+void drawVhfPage(const Report &r) {
+  tft.fillScreen(TFT_BLACK);
+  static const char *kLabels[3] = {"6m", "4m", "2m"};
+  const int cx = 120, cy = 120, rOut = 118, rIn = 82;
+  for (int i = 0; i < 3; i++) {
+    float a0 = -90.0f + i * 120.0f + 2.0f, a1 = -90.0f + (i + 1) * 120.0f - 2.0f;
+    tft.fillArc(cx, cy, rOut, rIn, a0, a1, stateColor(r.vhf[i]) == 0x8410 ? kColClosed
+                                                                           : stateColor(r.vhf[i]));
+    float mid = (a0 + a1) / 2 * PI / 180.0f;
+    float rl = (rOut + rIn) / 2.0f;
+    tft.setTextDatum(lgfx::middle_center);
+    tft.setFont(&fonts::Font6);
+    tft.setTextColor(r.vhf[i] == State::Closed ? 0x8410 : TFT_BLACK);
+    tft.drawString(kLabels[i], cx + rl * cosf(mid), cy + rl * sinf(mid));
+  }
+
+  char buf[40];
+  tft.setTextDatum(lgfx::middle_center);
+  tft.setFont(&fonts::Font2);
+  tft.setTextColor(0x8410);
+  snprintf(buf, sizeof buf, "%s VHF", gLocator);
+  tft.drawString(buf, cx, 66);
+  tft.setTextColor(stateColor(r.esOpen2 ? State::Open : State::Closed));
+  snprintf(buf, sizeof buf, "Es EU  %s", r.esOpen2 ? "open" : "closed");
+  tft.drawString(buf, cx, 96);
+  tft.setTextColor(stateColor(r.auroraOpen ? State::Open : State::Closed));
+  snprintf(buf, sizeof buf, "Aurora  %s", r.auroraOpen ? "open" : "closed");
+  tft.drawString(buf, cx, 120);
+  tft.setTextColor(stateColor(r.tropo));
+  if (r.tropoValid)
+    snprintf(buf, sizeof buf, "Tropo %.0f N/km", r.dN);
+  else
+    snprintf(buf, sizeof buf, "Tropo --");
+  tft.drawString(buf, cx, 144);
+  tft.setTextColor(0x8410);
+  snprintf(buf, sizeof buf, "F2 MUF %.0f", r.muf);
+  tft.drawString(buf, cx, 172);
+}
+
 void drawPage() {
-  if (page != 4) hamsterSprite.deleteSprite();
+  if (page != kHamsterPage) hamsterSprite.deleteSprite();
   if (!report.valid) return;
   switch (page) {
-    case 1: drawSolarPage(report); break;
-    case 2: drawSondePage(report); break;
-    case 3: drawBandPage(report); break;
-    case 4: drawHamsterPage(); break;
+    case 1: drawVhfPage(report); break;
+    case 2: drawSolarPage(report); break;
+    case 3: drawSondePage(report); break;
+    case 4: drawBandPage(report); break;
+    case 5: drawHamsterPage(); break;
     default: drawReport(report);
   }
 }
@@ -453,6 +566,10 @@ void refresh() {
   bool ok = fetchIono(next);
   uint32_t t1 = millis();
   bool solarOk = fetchSolar(next);  // keeps previous SFI/K if it fails
+  if (!fetchTropo(next)) next.tropoValid = false;
+  Serial.printf("tropo %s dN %.1f N/km, es2 %d es4 %d es6 %d aurora %d\n",
+                next.tropoValid ? "ok" : "FAIL", next.dN, next.esOpen2, next.esOpen4, next.esOpen6,
+                next.auroraOpen);
   Serial.printf("fetch iono %s %lu ms, solar %s %lu ms, heap %u, rssi %d\n", ok ? "ok" : "FAIL",
                 t1 - t0, solarOk ? "ok" : "FAIL", millis() - t1, ESP.getFreeHeap(), WiFi.RSSI());
   if (ok) {
@@ -517,8 +634,8 @@ void checkBootButton() {
     nextSlideAt = millis() + kSlideMs;
     drawPage();
   }
-  if (page == 4 && millis() - lastHamsterMs >= hamster::kFrameMs) drawHamsterFrame();
-  if (!slideshow && page != 0 && page != 4 && millis() - lastPageChange > kPageTimeoutMs) {
+  if (page == kHamsterPage && millis() - lastHamsterMs >= hamster::kFrameMs) drawHamsterFrame();
+  if (!slideshow && page != 0 && page != kHamsterPage && millis() - lastPageChange > kPageTimeoutMs) {
     page = 0;
     drawPage();
   }

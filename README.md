@@ -10,11 +10,12 @@ Tap the BOOT button to cycle through the pages:
 
 | Page | Content |
 |---|---|
-| 1 | Band ring (80, 40, 30, 20, 17, 15, 12, 10 m) coloured open / marginal / closed, with MUF, LUF, foF2, SFI and K in the middle |
-| 2 | Solar details: SFI, A and K index, sunspot number, solar wind, X-ray class |
-| 3 | The ionosondes nearest to you: distance, MUF(3000) and foF2 |
-| 4 | Band table with frequency and status |
-| 5 | A pixel-art hamster running in a wheel. It is purely decorative. No, it does not power the device. Probably. |
+| 1 | HF band ring (80, 40, 30, 20, 17, 15, 12, 10 m) coloured open / marginal / closed, with MUF, LUF, foF2, SFI and K in the middle |
+| 2 | VHF ring (6, 4, 2 m) with sporadic E, aurora and tropo ducting status |
+| 3 | Solar details: SFI, A and K index, sunspot number, solar wind, X-ray class |
+| 4 | The ionosondes nearest to you: distance, MUF(3000) and foF2 |
+| 5 | Band table with frequency and status |
+| 6 | A pixel-art hamster running in a wheel. It is purely decorative. No, it does not power the device. Probably. |
 
 Double-click BOOT to start a slideshow that changes the page every 5 seconds. Any single tap stops it.
 
@@ -30,6 +31,11 @@ Hold BOOT for 3 seconds to wipe Wi-Fi and locator and return to setup mode.
 - **LUF**: nobody publishes this, so it is an **estimate** (the display marks it `LUF~`). It is derived from the
   sun's elevation at your location, the solar flux and the K index. Treat it as a rough D-layer absorption guide,
   not as gospel.
+- **VHF**: 6 m is open when the measured MUF reaches 50 MHz (F2) or HamQSL reports sporadic E for 6 m. 4 m
+  uses HamQSL's 4 m sporadic E report. 2 m is open on sporadic E, aurora (both from HamQSL's model), or tropo
+  ducting. Tropo is estimated from [Open-Meteo](https://open-meteo.com/) data: the refractivity gradient between
+  the ground and the 850 hPa level. Below -157 N/km is ducting, below -100 N/km is marginal (super-refraction).
+  These are model values, not measurements. For most of the year the ring will correctly say "closed".
 - **Band status**: a band is open if it sits between the LUF and 85% of the MUF, marginal near either edge, and
   closed otherwise. The MUF is the 3000 km figure, so short NVIS paths and exotic ones will differ.
 
