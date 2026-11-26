@@ -16,6 +16,8 @@ Tap the BOOT button to cycle through the pages:
 | 4 | Band table with frequency and status |
 | 5 | A pixel-art hamster running in a wheel. It is purely decorative. No, it does not power the device. Probably. |
 
+Double-click BOOT to start a slideshow that changes the page every 5 seconds. Any single tap stops it.
+
 Hold BOOT for 3 seconds to wipe Wi-Fi and locator and return to setup mode.
 
 ## How the numbers are made

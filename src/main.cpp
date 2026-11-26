@@ -91,6 +91,10 @@ uint32_t hamsterFrame = 0;
 uint32_t lastHamsterMs = 0;
 lgfx::LGFX_Sprite hamsterSprite(&tft);
 constexpr uint32_t kPageTimeoutMs = 60UL * 1000UL;
+constexpr uint32_t kDoubleClickMs = 350;
+constexpr uint32_t kSlideMs = 5000;
+bool slideshow = false;
+uint32_t nextSlideAt = 0;
 bool fetchFailed = false;
 
 constexpr uint16_t kColOpen = 0x07E0;
@@ -467,7 +471,8 @@ void refresh() {
 }
 
 void checkBootButton() {
-  static uint32_t pressedAt = 0;
+  static uint32_t pressedAt = 0, tapAt = 0;
+  static bool pendingTap = false;
   bool down = digitalRead(kBootPin) == LOW;
   if (down) {
     if (!pressedAt) pressedAt = millis();
@@ -485,13 +490,35 @@ void checkBootButton() {
     uint32_t held = millis() - pressedAt;
     pressedAt = 0;
     if (held > 40 && held < 1500) {
+      if (pendingTap && millis() - tapAt < kDoubleClickMs) {
+        pendingTap = false;
+        slideshow = !slideshow;
+        nextSlideAt = millis() + kSlideMs;
+      } else {
+        pendingTap = true;
+        tapAt = millis();
+      }
+    }
+  }
+  // A single tap only counts once the double-click window has passed.
+  if (pendingTap && !down && millis() - tapAt >= kDoubleClickMs) {
+    pendingTap = false;
+    if (slideshow) {
+      slideshow = false;
+    } else {
       page = (page + 1) % kPageCount;
       lastPageChange = millis();
       drawPage();
     }
   }
+  if (slideshow && (int32_t)(millis() - nextSlideAt) >= 0) {
+    page = (page + 1) % kPageCount;
+    lastPageChange = millis();
+    nextSlideAt = millis() + kSlideMs;
+    drawPage();
+  }
   if (page == 4 && millis() - lastHamsterMs >= hamster::kFrameMs) drawHamsterFrame();
-  if (page != 0 && page != 4 && millis() - lastPageChange > kPageTimeoutMs) {
+  if (!slideshow && page != 0 && page != 4 && millis() - lastPageChange > kPageTimeoutMs) {
     page = 0;
     drawPage();
   }
